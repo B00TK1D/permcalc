@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linux File Permissions Analyzer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #00ff88;
+            font-size: 2.5em;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+
+        .input-section {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 40px;
+        }
+
+        .permission-container {
+            background: #2d2d2d;
+            padding: 25px;
+            border-radius: 10px;
+            border: 2px solid #444;
+            min-width: 500px;
+        }
+
+        .permission-row {
+            display: grid;
+            grid-template-columns: 150px 150px 150px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+            gap: 15px;
+        }
+
+        .permission-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .permission-row label {
+            min-width: 160px;
+            font-size: 1.1em;
+            color: #00ff88;
+            text-align: right;
+        }
+
+        .permission-row input {
+            background-color: #1a1a1a;
+            border: 2px solid #555;
+            color: #e0e0e0;
+            padding: 10px;
+            font-size: 1.2em;
+            font-family: 'Courier New', monospace;
+            border-radius: 5px;
+            width: 150px;
+            text-align: center;
+        }
+
+        .permission-row input:focus {
+            outline: none;
+            border-color: #00ff88;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+        }
+
+        .permission-row input.invalid {
+            border-color: #ff4444;
+            box-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
+        }
+
+        .octal-display {
+            color: #00ff88;
+            font-size: 0.9em;
+            font-weight: bold;
+            min-width: 80px;
+            text-align: left;
+        }
+
+        .results {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .user-category {
+            background: #2d2d2d;
+            border-radius: 10px;
+            padding: 20px;
+            border: 2px solid #444;
+        }
+
+        .user-category h3 {
+            color: #00ff88;
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 1.3em;
+        }
+
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .action {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+
+        .action.allowed {
+            background-color: rgba(0, 255, 136, 0.1);
+            border-left: 4px solid #00ff88;
+        }
+
+        .action.denied {
+            background-color: rgba(255, 68, 68, 0.1);
+            border-left: 4px solid #ff4444;
+        }
+
+        .action.disabled {
+            background-color: rgba(100, 100, 100, 0.1);
+            border-left: 4px solid #666;
+            opacity: 0.5;
+        }
+
+        .action.na {
+            background-color: rgba(255, 165, 0, 0.1);
+            border-left: 4px solid #ffa500;
+        }
+
+        .status {
+            font-weight: bold;
+            font-size: 0.8em;
+            padding: 2px 8px;
+            border-radius: 3px;
+        }
+
+        .status.allowed {
+            background-color: #00ff88;
+            color: #1a1a1a;
+        }
+
+        .status.denied {
+            background-color: #ff4444;
+            color: #ffffff;
+        }
+
+        .status.disabled {
+            background-color: #666;
+            color: #ccc;
+        }
+
+        .status.na {
+            background-color: #ffa500;
+            color: #1a1a1a;
+        }
+
+        .legend {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .note {
+            background: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #ccc;
+            font-size: 0.9em;
+        }
+
+        .note h4 {
+            color: #00ff88;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Linux File Permissions Analyzer</h1>
+
+        <div class="legend">
+            Enter permissions in standard format (e.g., drwxr-xr-x, -rw-r--r--)
+        </div>
+
+        <div class="input-section">
+            <div class="permission-container">
+                <div class="permission-row">
+                    <label for="dirPerms">Parent</label>
+                    <input type="text" id="dirPerms" placeholder="drwxr-xr-x" maxlength="10">
+                    <div class="octal-display" id="dirOctal"></div>
+                </div>
+
+                <div class="permission-row">
+                    <label for="filePerms">Target</label>
+                    <input type="text" id="filePerms" placeholder="-rw-r--r--" maxlength="10">
+                    <div class="octal-display" id="fileOctal"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="results" id="results">
+            <!-- Results will be populated here -->
+        </div>
+    </div>
+
+    <script>
+        function permissionsToOctal(perms) {
+            if (!validatePermissions(perms)) return '';
+
+            let octal = '';
+
+            // Process permissions in groups of 3 (owner, group, other)
+            for (let i = 1; i < 10; i += 3) {
+                let value = 0;
+
+                // Read permission (4)
+                if (perms[i] === 'r') value += 4;
+
+                // Write permission (2)
+                if (perms[i + 1] === 'w') value += 2;
+
+                // Execute permission (1) - handle special bits
+                const execChar = perms[i + 2];
+                if (execChar === 'x' || execChar === 's' || execChar === 't') {
+                    value += 1;
+                }
+
+                octal += value;
+            }
+
+            // Add special bits prefix if present
+            let specialBits = 0;
+
+            // Check for setuid (owner execute position)
+            if (perms[3] === 's' || perms[3] === 'S') specialBits += 4;
+
+            // Check for setgid (group execute position)
+            if (perms[6] === 's' || perms[6] === 'S') specialBits += 2;
+
+            // Check for sticky bit (other execute position)
+            if (perms[9] === 't' || perms[9] === 'T') specialBits += 1;
+
+            if (specialBits > 0) {
+                octal = specialBits + octal;
+            }
+
+            return octal;
+        }
+
+        function validatePermissions(perms) {
+            if (perms.length !== 10) return false;
+
+            // First character: file type
+            if (!/^[-dlcbps]/.test(perms)) return false;
+
+            // Check for valid permission characters
+            for (let i = 1; i < 10; i++) {
+                const char = perms[i];
+                const pos = (i - 1) % 3;
+
+                if (pos === 0 && char !== 'r' && char !== '-') return false;
+                if (pos === 1 && char !== 'w' && char !== '-') return false;
+                if (pos === 2 && !['x', '-', 's', 'S', 't', 'T'].includes(char)) return false;
+            }
+
+            return true;
+        }
+
+        function parsePermissions(perms) {
+            if (!validatePermissions(perms)) return null;
+
+            const fileType = perms[0];
+            const owner = perms.slice(1, 4);
+            const group = perms.slice(4, 7);
+            const other = perms.slice(7, 10);
+
+            return {
+                fileType,
+                owner: {
+                    read: owner[0] === 'r',
+                    write: owner[1] === 'w',
+                    execute: owner[2] === 'x' || owner[2] === 's' || owner[2] === 't',
+                    setuid: owner[2] === 's' || owner[2] === 'S'
+                },
+                group: {
+                    read: group[0] === 'r',
+                    write: group[1] === 'w',
+                    execute: group[2] === 'x' || group[2] === 's',
+                    setgid: group[2] === 's' || group[2] === 'S'
+                },
+                other: {
+                    read: other[0] === 'r',
+                    write: other[1] === 'w',
+                    execute: other[2] === 'x' || other[2] === 't',
+                    sticky: other[2] === 't' || other[2] === 'T'
+                }
+            };
+        }
+
+        function getActions(dirPerms, filePerms) {
+            const dir = parsePermissions(dirPerms);
+            const file = parsePermissions(filePerms);
+
+            if (!dir || !file) return null;
+
+            const isDirectory = file.fileType === 'd';
+            const isRegularFile = file.fileType === '-';
+
+            const categories = ['owner', 'group', 'other'];
+            const results = {};
+
+            categories.forEach(category => {
+                const dirP = dir[category];
+                const fileP = file[category];
+
+                results[category] = {};
+
+                if (isRegularFile) {
+                    // File operations
+                    results[category]['Read file content'] = fileP.read;
+                    results[category]['Write to file'] = fileP.write;
+                    results[category]['Execute file'] = fileP.execute;
+                    results[category]['Append to file'] = fileP.write;
+                    
+                    // Operations requiring directory permissions
+                    results[category]['Open file'] = dirP.execute;
+                    results[category]['Delete file'] = dirP.write && dirP.execute && (category === 'owner' || !dir.other.sticky);
+                    results[category]['Rename/move file'] = dirP.write && dirP.execute;
+                    results[category]['Create hard link'] = dirP.write && dirP.execute;
+                    results[category]['View file metadata (stat)'] = dirP.execute;
+                    
+                    // Ownership and permissions (owner only)
+                    results[category]['Change file permissions'] = category === 'owner';
+                    results[category]['Change file ownership'] = category === 'owner';
+                    
+                    // Access and modification times
+                    results[category]['Update access time'] = fileP.read || fileP.write;
+                    results[category]['Update modification time'] = fileP.write;
+
+                } else if (isDirectory) {
+                    // Directory operations
+                    results[category]['List directory contents'] = fileP.read;
+                    results[category]['Enter directory (cd)'] = fileP.execute;
+                    results[category]['Search directory'] = fileP.execute;
+                    results[category]['Create files in directory'] = fileP.write && fileP.execute;
+                    results[category]['Create subdirectories'] = fileP.write && fileP.execute;
+                    results[category]['Delete files from directory'] = fileP.write && fileP.execute && (category === 'owner' || !file.other.sticky);
+                    results[category]['Rename files in directory'] = fileP.write && fileP.execute;
+                    
+                    // Directory metadata
+                    results[category]['View directory metadata'] = dirP.execute;
+                    results[category]['Change directory permissions'] = category === 'owner';
+                    results[category]['Change directory ownership'] = category === 'owner';
+                    
+                    // Special directory operations
+                    results[category]['Delete directory (if empty)'] = dirP.write && dirP.execute;
+                    results[category]['Access subdirectories'] = fileP.execute;
+
+                } else {
+                    // Special files (block, char, pipe, socket, etc.)
+                    results[category]['Read from device/special file'] = fileP.read;
+                    results[category]['Write to device/special file'] = fileP.write;
+                    results[category]['Access device/special file'] = dirP.execute;
+                    results[category]['View special file metadata'] = dirP.execute;
+                    results[category]['Delete special file'] = dirP.write && dirP.execute && (category === 'owner' || !dir.other.sticky);
+                    results[category]['Change special file permissions'] = category === 'owner';
+                    results[category]['Change special file ownership'] = category === 'owner';
+                }
+
+                // Universal operations that depend on context
+                if (dir.fileType === 'd') {
+                    // These operations require parent directory permissions
+                    if (isRegularFile || isDirectory) {
+                        results[category]['Access file path'] = dirP.execute;
+                    }
+                }
+            });
+
+            return results;
+        }
+
+        function updateResults() {
+            const dirPerms = document.getElementById('dirPerms').value.trim();
+            const filePerms = document.getElementById('filePerms').value.trim();
+            const resultsDiv = document.getElementById('results');
+            const dirInput = document.getElementById('dirPerms');
+            const fileInput = document.getElementById('filePerms');
+            const dirOctal = document.getElementById('dirOctal');
+            const fileOctal = document.getElementById('fileOctal');
+
+            // Clear previous error styling
+            dirInput.classList.remove('invalid');
+            fileInput.classList.remove('invalid');
+
+            // Update octal displays and validation styling
+            if (dirPerms) {
+                const dirOctalValue = permissionsToOctal(dirPerms);
+                if (dirOctalValue) {
+                    dirOctal.textContent = `${dirOctalValue}`;
+                } else {
+                    dirOctal.textContent = '';
+                    dirInput.classList.add('invalid');
+                }
+            } else {
+                dirOctal.textContent = '';
+            }
+
+            if (filePerms) {
+                const fileOctalValue = permissionsToOctal(filePerms);
+                if (fileOctalValue) {
+                    fileOctal.textContent = `${fileOctalValue}`;
+                } else {
+                    fileOctal.textContent = '';
+                    fileInput.classList.add('invalid');
+                }
+            } else {
+                fileOctal.textContent = '';
+            }
+
+            // Check for validation errors
+            let hasErrors = false;
+
+            if (dirPerms && !validatePermissions(dirPerms)) {
+                hasErrors = true;
+            }
+
+            if (filePerms && !validatePermissions(filePerms)) {
+                hasErrors = true;
+            }
+
+            if (!dirPerms || !filePerms || hasErrors) {
+                showDisabledResults();
+                return;
+            }
+
+            const actions = getActions(dirPerms, filePerms);
+
+            if (!actions) {
+                resultsDiv.innerHTML = '<div style="text-align: center; color: #ff4444; grid-column: 1 / -1;">Error parsing permissions</div>';
+                return;
+            }
+
+            const categoryNames = {
+                owner: 'File Owner',
+                group: 'Group Members',
+                other: 'Everyone Else'
+            };
+
+            resultsDiv.innerHTML = '';
+
+            Object.keys(actions).forEach(category => {
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'user-category';
+
+                const title = document.createElement('h3');
+                title.textContent = categoryNames[category];
+                categoryDiv.appendChild(title);
+
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'actions';
+
+                Object.entries(actions[category]).forEach(([action, allowed]) => {
+                    const actionDiv = document.createElement('div');
+                    actionDiv.className = `action ${allowed ? 'allowed' : 'denied'}`;
+
+                    const actionText = document.createElement('span');
+                    actionText.textContent = action;
+
+                    const status = document.createElement('span');
+                    status.className = `status ${allowed ? 'allowed' : 'denied'}`;
+                    status.textContent = allowed ? 'ALLOWED' : 'DENIED';
+
+                    actionDiv.appendChild(actionText);
+                    actionDiv.appendChild(status);
+                    actionsDiv.appendChild(actionDiv);
+                });
+
+                categoryDiv.appendChild(actionsDiv);
+                resultsDiv.appendChild(categoryDiv);
+            });
+        }
+
+        function showDisabledResults() {
+            const resultsDiv = document.getElementById('results');
+            const categoryNames = {
+                owner: 'File Owner',
+                group: 'Group Members',
+                other: 'Everyone Else'
+            };
+
+            const standardActions = [
+                'Read file content',
+                'Write to file',
+                'Execute file',
+                'Open file',
+                'Delete file',
+                'Rename/move file',
+                'Change file permissions',
+                'View file metadata'
+            ];
+
+            resultsDiv.innerHTML = '';
+
+            Object.keys(categoryNames).forEach(category => {
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'user-category';
+
+                const title = document.createElement('h3');
+                title.textContent = categoryNames[category];
+                categoryDiv.appendChild(title);
+
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'actions';
+
+                standardActions.forEach(action => {
+                    const actionDiv = document.createElement('div');
+                    actionDiv.className = 'action disabled';
+
+                    const actionText = document.createElement('span');
+                    actionText.textContent = action;
+
+                    const status = document.createElement('span');
+                    status.className = 'status disabled';
+                    status.textContent = 'INVALID';
+
+                    actionDiv.appendChild(actionText);
+                    actionDiv.appendChild(status);
+                    actionsDiv.appendChild(actionDiv);
+                });
+
+                categoryDiv.appendChild(actionsDiv);
+                resultsDiv.appendChild(categoryDiv);
+            });
+        }
+
+        // Event listeners
+        document.getElementById('dirPerms').addEventListener('input', updateResults);
+        document.getElementById('filePerms').addEventListener('input', updateResults);
+
+        // Initialize with default values
+        document.getElementById('dirPerms').value = 'drwxr-xr-x';
+        document.getElementById('filePerms').value = '-rw-r--r--';
+        updateResults();
+    </script>
+</body>
+</html>
